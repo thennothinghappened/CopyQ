@@ -1,8 +1,8 @@
 class Kf5Kconfig < Formula
   desc "Configuration system"
   homepage "https://www.kde.org"
-  url "https://download.kde.org/stable/frameworks/5.87/kconfig-5.87.0.tar.xz"
-  sha256 "345bf5a68de968c3301aec16e1ec6eebd1c575a891464784aa0e177771e917d1"
+  url "https://download.kde.org/stable/frameworks/5.94/kconfig-5.94.0.tar.xz"
+  sha256 "8e6d9104f070d94f083be000ea116acae3499b0dd110fa4c9c55f51ea91cb3d7"
   head "https://invent.kde.org/frameworks/kconfig.git"
 
   depends_on "cmake" => [:build, :test]
@@ -10,15 +10,16 @@ class Kf5Kconfig < Formula
 
   depends_on "copyq/kde/extra-cmake-modules" => [:build, :test]
 
-  depends_on "qt@5"
+  depends_on "qt"
 
   def install
     args = std_cmake_args
+    args << "-DQT_MAJOR_VERSION=6"
     args << "-DBUILD_TESTING=OFF"
     args << "-DBUILD_QCH=OFF"
-    args << "-DKDE_INSTALL_QMLDIR=lib/qt5/qml"
-    args << "-DKDE_INSTALL_PLUGINDIR=lib/qt5/plugins"
-    args << "-DKDE_INSTALL_QTPLUGINDIR=lib/qt5/plugins"
+    args << "-DKDE_INSTALL_QMLDIR=lib/qt6/qml"
+    args << "-DKDE_INSTALL_PLUGINDIR=lib/qt6/plugins"
+    args << "-DKDE_INSTALL_QTPLUGINDIR=lib/qt6/plugins"
 
     args << "-DKCONFIG_USE_GUI=OFF"
     args << "-DKCONFIG_USE_DBUS=OFF"

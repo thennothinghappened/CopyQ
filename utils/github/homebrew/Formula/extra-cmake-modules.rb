@@ -1,18 +1,20 @@
 class ExtraCmakeModules < Formula
   desc "Extra modules and scripts for CMake"
   homepage "https://api.kde.org/frameworks/extra-cmake-modules/html/index.html"
-  url "https://download.kde.org/stable/frameworks/5.87/extra-cmake-modules-5.87.0.tar.xz"
-  sha256 "541ca70d8e270614d19d8fd9e55f97b55fa1dc78d6538c6f6757be372ef8bcab"
+  url "https://download.kde.org/stable/frameworks/5.94/extra-cmake-modules-5.94.0.tar.xz"
+  sha256 "23548a8ce2b998cfa675fc00112bf93914ee25194f0bfdf832d283c8d678d279"
   license all_of: ["BSD-2-Clause", "BSD-3-Clause", "MIT"]
   head "https://invent.kde.org/frameworks/extra-cmake-modules.git"
 
   depends_on "cmake" => [:build, :test]
   depends_on "ninja" => :build
 
-  depends_on "qt@5" => :build
+  depends_on "qt" => :build
 
   def install
     args = std_cmake_args
+    args << "-DQT_MAJOR_VERSION=6"
+    args << "-DQT_DEFAULT_MAJOR_VERSION=6"
     args << "-DBUILD_HTML_DOCS=OFF"
     args << "-DBUILD_MAN_DOCS=OFF"
     args << "-DBUILD_QTHELP_DOCS=OFF"
