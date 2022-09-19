@@ -293,6 +293,8 @@ class ClipboardBrowser final : public QListView
         void enterEvent(QEvent *event) override;
 #endif
 
+        void scrollContentsBy(int dx, int dy) override;
+
         void doItemsLayout() override;
 
     private slots:
@@ -372,7 +374,6 @@ class ClipboardBrowser final : public QListView
         int findPreviousVisibleRow(int row);
 
         void preloadCurrentPage();
-        void preloadCurrentPageLater();
         void preload(int pixels, int direction, const QModelIndex &start);
 
         void updateCurrentIndex();

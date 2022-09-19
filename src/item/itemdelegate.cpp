@@ -130,14 +130,14 @@ void ItemDelegate::rowsMoved(const QModelIndex &, int sourceStart, int sourceEnd
     std::rotate(start1, start2, end2);
 }
 
-bool ItemDelegate::showAt(const QModelIndex &index, QPoint pos)
+void ItemDelegate::showAt(const QModelIndex &index, QPoint pos)
 {
     auto w = cache(index);
     auto ww = w->widget();
     ww->move(pos);
 
     if ( !ww->isHidden() )
-        return false;
+        return;
 
     ww->show();
 
@@ -145,8 +145,6 @@ bool ItemDelegate::showAt(const QModelIndex &index, QPoint pos)
         ww->setProperty(propertySizeUpdated, true);
         updateSize(w, index.row());
     }
-
-    return true;
 }
 
 QWidget *ItemDelegate::createPreview(const QVariantMap &data, QWidget *parent)
@@ -233,10 +231,15 @@ void ItemDelegate::setItemSizes(QSize size, int idealWidth)
     m_idealWidth = idealWidth - margin;
 
     if (m_idealWidth > 0) {
+        const int currentRow = m_view->currentIndex().row();
         for (int row = 0; static_cast<size_t>(row) < m_cache.size(); ++row) {
             ItemWidget *w = m_cache[row].get();
-            if (w != nullptr)
-                updateSize(w, row);
+            if (w != nullptr) {
+                if (!w->widget()->isHidden() || row == currentRow)
+                    updateSize(w, row);
+                else
+                    setIndexWidget(m_view->index(row), nullptr);
+            }
         }
     }
 }
@@ -379,6 +382,14 @@ void ItemDelegate::setItemWidgetSelected(const QModelIndex &index, bool isSelect
 void ItemDelegate::setIndexWidget(const QModelIndex &index, ItemWidget *w)
 {
     const int row = index.row();
+
+    QPoint showPos;
+    if (w) {
+        auto ptr = m_cache[row];
+        if ( ptr != nullptr && !ptr->widget()->isHidden() )
+            showPos = ptr->widget()->pos();
+    }
+
     m_cache[row].reset(w);
     if (w == nullptr)
         return;
@@ -394,7 +405,12 @@ void ItemDelegate::setIndexWidget(const QModelIndex &index, ItemWidget *w)
     const bool isSelected = m_view->selectionModel()->isSelected(index);
     setWidgetSelected(ww, isSelected);
 
+    if ( !showPos.isNull() )
+        showAt(index, showPos);
+
     ww->installEventFilter(this);
+
+    emit sizeHintChanged(index);
 }
 
 void ItemDelegate::setWidgetSelected(QWidget *ww, bool selected)
@@ -460,8 +476,6 @@ void ItemDelegate::setItemFilter(const ItemFilterPtr &filter)
 void ItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
                          const QModelIndex &index) const
 {
-    const QRect &rect = option.rect;
-
     const bool isSelected = option.state & QStyle::State_Selected;
 
     // Render background (selected, alternate, ...).
@@ -494,7 +508,7 @@ void ItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
         painter->save();
         painter->setFont( m_sharedData->theme.rowNumberFont() );
         const auto rowNumberPalette = m_sharedData->theme.rowNumberPalette();
-        style->drawItemText(painter, rect.translated(margins.width(), margins.height()),
+        style->drawItemText(painter, option.rect.translated(margins.width(), margins.height()),
                             Qt::AlignTop | Qt::AlignLeft,
                             rowNumberPalette, true, num,
                             role);

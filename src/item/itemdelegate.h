@@ -117,7 +117,7 @@ class ItemDelegate final : public QItemDelegate
         void rowsMoved(const QModelIndex &parent, int sourceStart, int sourceEnd,
                        const QModelIndex &destination, int destinationRow);
 
-        bool showAt(const QModelIndex &index, QPoint pos);
+        void showAt(const QModelIndex &index, QPoint pos);
 
         QWidget *createPreview(const QVariantMap &data, QWidget *parent);
 

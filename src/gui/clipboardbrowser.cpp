@@ -622,33 +622,44 @@ int ClipboardBrowser::findPreviousVisibleRow(int row)
 
 void ClipboardBrowser::preloadCurrentPage()
 {
-    const int h = viewport()->contentsRect().height();
-    const QModelIndex start = indexNear(0);
-    preload(h, 1, start);
-}
+    executeDelayedItemsLayout();
+    m_timerPreload.stop();
 
-void ClipboardBrowser::preloadCurrentPageLater()
-{
-    if ( !m_timerPreload.isActive() )
-        m_timerPreload.start();
+    const QRect rect = viewport()->contentsRect();
+    const int top = rect.top();
+    const int bottom = rect.bottom();
+
+    // Hide items outside viewport after scrolling.
+    const auto firstVisibleIndex = indexNear(top);
+    if ( firstVisibleIndex.isValid() ) {
+        for (int row = firstVisibleIndex.row() - 1; row >= 0; --row) {
+            auto w = d.cacheOrNull(row);
+            if (w)
+                w->widget()->hide();
+        }
+    }
+
+    const auto lastVisibleIndex = indexNear(bottom);
+    if ( lastVisibleIndex.isValid() ) {
+        for (int row = lastVisibleIndex.row() + 1; row < m.rowCount(); ++row) {
+            auto w = d.cacheOrNull(row);
+            if (w)
+                w->widget()->hide();
+        }
+    }
+
+    preload(rect.height(), 1, firstVisibleIndex);
 }
 
 void ClipboardBrowser::preload(int pixels, int direction, const QModelIndex &start)
 {
-    QElapsedTimer t;
-    t.start();
-
-    if ( m_timerUpdateSizes.isActive() )
-        updateSizes();
-
-    int row = start.row();
-    QModelIndex ind = start;
-    int y = 0;
-
+    int y = -visualRect(start).height();
     const auto margins = m_sharedData->theme.margins();
+    const int s = spacing();
+    QModelIndex ind = start;
+    int row = start.row();
+    bool relayout = false;
 
-    int items = 0;
-    bool anyShown = false;
     for ( ; ind.isValid() && y < pixels; row += direction, ind = index(row) ) {
         if ( isRowHidden(row) )
             continue;
@@ -656,23 +667,18 @@ void ClipboardBrowser::preload(int pixels, int direction, const QModelIndex &sta
         const auto rect = visualRect(ind);
         const auto rowNumberWidth = m_sharedData->theme.rowNumberSize(row).width();
         const auto pos = QPoint(
-            rect.left() + margins.width() - spacing() + rowNumberWidth,
+            rect.left() + margins.width() + rowNumberWidth,
             rect.top() + margins.height()
         );
 
-        if ( d.showAt(ind, pos) )
-            anyShown = true;
-
-        if (items > 0)
-            y += rect.height();
-
-        ++items;
-        if (anyShown && items > 1 && t.elapsed() > 20) {
-            // Preloading takes too long, preload rest of the items later.
-            preloadCurrentPageLater();
-            return;
-        }
+        d.showAt(ind, pos);
+        const QSize size = d.sizeHint(ind);
+        relayout = relayout || size != rect.size();
+        y += size.height() + 2 * s;
     }
+
+    if (relayout)
+        scheduleDelayedItemsLayout();
 }
 
 void ClipboardBrowser::moveToTop(const QModelIndex &index)
@@ -972,6 +978,8 @@ void ClipboardBrowser::showEvent(QShowEvent *event)
         scrollToTop();
 
     QListView::showEvent(event);
+
+    m_timerPreload.start();
 }
 
 void ClipboardBrowser::currentChanged(const QModelIndex &current, const QModelIndex &previous)
@@ -1061,37 +1069,6 @@ void ClipboardBrowser::dropEvent(QDropEvent *event)
 
 void ClipboardBrowser::paintEvent(QPaintEvent *e)
 {
-    const QRect rect = e->rect();
-    const int top = rect.top();
-    const int bottom = rect.bottom();
-
-    // Hide items outside viewport after scrolling.
-    if (top == 0) {
-        const int outside = viewport()->contentsRect().width() * 2;
-
-        const auto firstVisibleIndex = indexNear(top);
-        if ( firstVisibleIndex.isValid() ) {
-            for (int row = firstVisibleIndex.row() - 1; row >= 0; --row) {
-                auto w = d.cacheOrNull(row);
-                if (w)
-                    w->widget()->move(outside, 0);
-            }
-        }
-
-        const auto lastVisibleIndex = indexNear(bottom);
-        if ( lastVisibleIndex.isValid() ) {
-            for (int row = lastVisibleIndex.row() + 1; row < m.rowCount(); ++row) {
-                auto w = d.cacheOrNull(row);
-                if (w)
-                    w->widget()->move(outside, 0);
-            }
-        }
-    }
-
-    // Load items inside the current paint rectangle.
-    const QModelIndex start = indexNear(top);
-    preload(bottom, 1, start);
-
     QListView::paintEvent(e);
 
     // If dragging an item into list, draw indicator for dropping items.
@@ -1228,6 +1205,12 @@ void ClipboardBrowser::enterEvent(QEvent *event)
     QListView::enterEvent(event);
 }
 
+void ClipboardBrowser::scrollContentsBy(int dx, int dy)
+{
+    QListView::scrollContentsBy(dx, dy);
+    m_timerPreload.start();
+}
+
 void ClipboardBrowser::doItemsLayout()
 {
     // Keep visible current item (or the first one visible)
@@ -1235,6 +1218,8 @@ void ClipboardBrowser::doItemsLayout()
 
     // FIXME: Virtual method QListView::doItemsLayout() is undocumented
     //        so other way should be used instead.
+
+    m_timerPreload.start();
 
     const auto current = currentIndex();
     const auto currentRect = visualRect(current);
@@ -1447,14 +1432,13 @@ void ClipboardBrowser::keyPressEvent(QKeyEvent *event)
         const int h = viewport()->contentsRect().height();
 
         // Preload next and previous pages so that up/down and page up/down keys scroll correctly.
-        if ( !m_timerPreload.isActive() ) {
-            if (key == Qt::Key_PageDown || key == Qt::Key_PageUp)
-                preload(h, (key == Qt::Key_PageUp) ? -1 : 1, current);
-            else if (key == Qt::Key_Down || key == Qt::Key_Up)
-                preload(2 * spacing(), (key == Qt::Key_Up) ? -1 : 1, current);
-            else if (key == Qt::Key_End)
-                preload(h, -1, index(length() - 1));
-        }
+        if (key == Qt::Key_PageDown || key == Qt::Key_PageUp)
+            preload(h, (key == Qt::Key_PageUp) ? -1 : 1, current);
+        else if (key == Qt::Key_Down || key == Qt::Key_Up)
+            preload(0, (key == Qt::Key_Up) ? -1 : 1, current);
+        else if (key == Qt::Key_End)
+            preload(h, -1, index(length() - 1));
+        executeDelayedItemsLayout();
 
         if (key == Qt::Key_PageDown || key == Qt::Key_PageUp) {
             event->accept();
